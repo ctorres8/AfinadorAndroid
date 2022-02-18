@@ -154,7 +154,7 @@ public class MainActivity extends AppCompatActivity {
         final Button btn_sol = findViewById(R.id.boton_SOL);
         final Button btn_si = findViewById(R.id.boton_SI);
         final Button btn_mia = findViewById(R.id.boton_MIA);
-        
+
 
         //Accion al tocar el boton MI GRAVE
         btn_mig.setOnClickListener(new View.OnClickListener() {
