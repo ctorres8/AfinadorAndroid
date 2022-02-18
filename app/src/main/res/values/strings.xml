@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">MicroFFT</string>
+    <string name="Re">D</string>
+    <string name="la">A</string>
+    <string name="Mi">E</string>
+    <string name="Sol">G</string>
+    <string name="Si">B</string>
+    <string name="Mi2">e</string>
+    <string name="Text_view1">Indicacion</string>
+    <string name="Frecuencia">Frecuencia</string>
+    <string name="boton_cal">c</string>
+
+</resources>
