@@ -9,5 +9,8 @@
     <string name="Text_view1">Indicacion</string>
     <string name="Frecuencia">Frecuencia</string>
     <string name="boton_cal">c</string>
+    <string name="boton_ukelele">Ukelele</string>
+    <string name="boton_guitarra">Guitarra</string>
+    
 
 </resources>

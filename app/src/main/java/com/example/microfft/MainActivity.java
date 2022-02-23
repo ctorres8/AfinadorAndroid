@@ -4,9 +4,11 @@ import static java.lang.Math.log;
 import static java.lang.Math.sqrt;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Bundle;
@@ -19,6 +21,8 @@ import android.widget.Button;
 import android.widget.TextView;
 
 import org.jtransforms.fft.DoubleFFT_1D;
+
+import java.text.DecimalFormat;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -37,6 +41,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean flag_la = false; //-------------La
     private boolean flag_miA = false; //-------------mi
     private boolean flag_cal = false; // CALIBRACION
+    boolean flag_afinado =false;
 
     private boolean modo_Cal_inf =false;
     private boolean modo_Cal_sup =false;
@@ -67,13 +72,11 @@ public class MainActivity extends AppCompatActivity {
 
     //Variables para encontrar los picos y la fundamental
     private float f_fundamental = 0.0f; //Hz
-    private int NIVELMINIMO = 275;//250;
-    private float PASOS = 0.336499f; // pasos para 2048
+    private int NIVELMINIMO = 275;
     private float FRECUENCIA_MIN = 80;//Hz
 
     private float FREC_ELEGIDA = 80;//Hz
 
-    private float FREC_INICIO= 0.0f; //Hz
 
     // Defino los buffers, potencia de 2 para mas placer y por la FFT
     private int POW_FREC_SHOW = 11;
@@ -82,11 +85,14 @@ public class MainActivity extends AppCompatActivity {
 
     //Tamaños de Buffer
     private int BUFFER_SIZE_SHOW_FREQ = (int) Math.pow(2, POW_FREC_SHOW);
-    private int BUFFER_SIZE = (int) Math.pow(2, POW_FFT_BUFFER);
-    private float[] bufferFreq = new float[BUFFER_SIZE_SHOW_FREQ];
+    private int BUFFER_SIZE_MICRO = (int) Math.pow(2, POW_FFT_BUFFER);
+    private float[] Frecuencias = new float[BUFFER_SIZE_SHOW_FREQ];
+    //private int SAMPLE_RATE = 44100; // en Hz
+
+
 
     //Hanning
-    private float[] hanning = new float[BUFFER_SIZE];
+    private float[] hanning = new float[BUFFER_SIZE_MICRO];
 
     //Flag de estado de botones
     private float FREC_PREV = FRECUENCIA_MIN;
@@ -100,9 +106,9 @@ public class MainActivity extends AppCompatActivity {
     // Para que esto ande debemos poner la ependencia en "build.gradle (Module: app)" :
     // dentro de "dependencies" ponemos:
     // implementation 'com.github.wendykierp:JTransforms:3.1'
-    private DoubleFFT_1D fft = new DoubleFFT_1D(BUFFER_SIZE);
+    private DoubleFFT_1D fft = new DoubleFFT_1D(BUFFER_SIZE_MICRO);
     // Este es el buffer de entrada a la FFT, que quiere doubles...
-    double[] buffer_double = new double[BUFFER_SIZE];
+    double[] buffer_double = new double[BUFFER_SIZE_MICRO];
 
 
     //---------------------------------------------------------------------------------------
@@ -110,9 +116,9 @@ public class MainActivity extends AppCompatActivity {
     //---------------------------------------------------------------------------------------
     // Declaramos la clase para grabar audio
     AudioRecord recorder = null;
-    private int SAMPLE_RATE = 44100; // en Hz
+    //private int SAMPLE_RATE = 44100; // en Hz
     // Buffer donde sale el valor crudo del microfono
-    short[] buffer = new short[BUFFER_SIZE];
+    short[] buffer = new short[BUFFER_SIZE_MICRO];
 
     //---------------------------------------------------------------------------------------
     //-------------------------- Permisos de audio ------------------------------------------
@@ -146,6 +152,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Bloqueo la pantalla en modo retrado
         setRequestedOrientation((ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
+
 
 
         final Button btn_mig = findViewById(R.id.boton_MIG);
@@ -414,8 +421,12 @@ public class MainActivity extends AppCompatActivity {
         });
 
 
+        //AudioManager audioManager = (AudioManager) this.getSystemService(this.AUDIO_SERVICE);
+        //String rate = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+        //int rate = Integer.parseInt(audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE));
 
 
+        //int entero = Integer.parseInt(rate);
         // Pedimos permiso para grabar audio
         ActivityCompat.requestPermissions(this, permissions, REQUEST_RECORD_AUDIO_PERMISSION);
 
@@ -431,25 +442,34 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
+        //Pido la frecuencia de muestreo al dispositivo
+        AudioManager audioManager = (AudioManager) this.getSystemService(this.AUDIO_SERVICE);
+        //String rate = audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE);
+        int SampleRate = Integer.parseInt(audioManager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE));
+        int BufferSizeMin = AudioRecord.getMinBufferSize(SampleRate,AudioFormat.CHANNEL_IN_DEFAULT,AudioFormat.ENCODING_PCM_16BIT);
 
         recorder = new AudioRecord(MediaRecorder.AudioSource.MIC,
-                SAMPLE_RATE,
+                SampleRate,
                 AudioFormat.CHANNEL_IN_DEFAULT,
                 AudioFormat.ENCODING_PCM_16BIT,
-                BUFFER_SIZE);
+                BufferSizeMin);
+                //AudioRecord.getMinBufferSize(SampleRate,AudioFormat.CHANNEL_IN_DEFAULT,AudioFormat.ENCODING_PCM_16BIT));
+                //BUFFER_SIZE);
 
         //Hanning - Ventana
-        for (int i=0; i<BUFFER_SIZE;i++) {
+        for (int i = 0; i< BUFFER_SIZE_MICRO; i++) {
             //Funcion sacada de MATLAB
-            hanning[i]=(float)(0.5-(0.5*Math.cos((2*Math.PI*i)/(BUFFER_SIZE-1) )));
+            hanning[i]=(float)(0.5-(0.5*Math.cos((2*Math.PI*i)/(BUFFER_SIZE_MICRO -1) )));
         }
 
-        //Relleno del buffer mapeando las frecuencias
-        bufferFreq[0]=FREC_INICIO;
+        //Relleno del buffer mapeando las frecuencias 2^11 MUESTRAS
+        Frecuencias[0]=0.0f; //Hz
+        float PASOS = (float) SampleRate/((float) BUFFER_SIZE_MICRO -1);
+        //for(int i=1;i<BUFFER_SIZE_SHOW_FREQ;i++)
         for(int i=1;i<BUFFER_SIZE_SHOW_FREQ;i++) {
             // El valor 2,353 se saco de manera expiremental midiendo distintas
             // frecuencias y ajustando hasta tener un valor aceptable.
-            bufferFreq[i] = bufferFreq[i-1] + PASOS;
+            Frecuencias[i] = Frecuencias[i-1] + PASOS;
         }
 
         //------------------------------------------------------------------------------------------
@@ -483,6 +503,8 @@ public class MainActivity extends AppCompatActivity {
                     } catch (InterruptedException e) {
 
                     }
+
+
                 }
             }
         }).start();
@@ -535,7 +557,7 @@ public class MainActivity extends AppCompatActivity {
         if (buffer_ready) {
 
             // Pasamos a double como quiere la clase FFT
-            for (int i = 0; i < BUFFER_SIZE; i++)
+            for (int i = 0; i < BUFFER_SIZE_MICRO; i++)
             {
                 buffer_double[i] = buffer[i]*hanning[i]; //Ventaneo
             }
@@ -547,18 +569,14 @@ public class MainActivity extends AppCompatActivity {
 
             updateFFT_values();
 
+            DecimalFormat df = new DecimalFormat("#.00");
+            String resultado = df.format(f_fundamental);
+
             // Actualizo Frecuencia
             final TextView mostrarFrec = findViewById(R.id.editText_frec);
-            mostrarFrec.setText(f_fundamental+"Hz");
-            try {
-                //Ponemos a "Dormir" el programa durante los ms que queremos
-                Thread.sleep(500);
-            } catch (Exception e) {
-            }
+            mostrarFrec.setText(resultado+"Hz");
 
-
-
-            NotaCompare();
+            NotaCompare(); //Comparo las notas medidas con las patron
 
             // Terminamos de procesar el buffer, reseteamos el flag
             buffer_ready = false;
@@ -598,12 +616,12 @@ public class MainActivity extends AppCompatActivity {
         {
             if( (buffer_aux[i]-buffer_aux[i-1])>0 && (buffer_aux[i+1]-buffer_aux[i])<=0 )
             {
-                if(buffer_aux[i]>NIVELMINIMO-0)
+                if(buffer_aux[i]>NIVELMINIMO-10)
                 {
                     Amplitud_muestras[len_freq]=buffer_aux[i];
 
-                    if(bufferFreq[i]>FREC_ELEGIDA-20&&bufferFreq[i]<FREC_ELEGIDA+20){
-                        buff_freq[len_freq]=bufferFreq[i];
+                    if(Frecuencias[i]>FREC_ELEGIDA-20&& Frecuencias[i]<FREC_ELEGIDA+20){
+                        buff_freq[len_freq]= Frecuencias[i];
                         len_freq++;
                     }
 
@@ -619,6 +637,8 @@ public class MainActivity extends AppCompatActivity {
 
             f_fundamental =  findmax(buff_freq);//buff_freq[findmax(Amplitud_muestras)-1];
         }
+
+        if (len_freq==0) f_fundamental=0;
     }
 
     //Funcion que sirve para encontrar el pico más alto despues de transformar
@@ -658,7 +678,7 @@ public class MainActivity extends AppCompatActivity {
                 //Log.d("PRUEBA", "Estoy grabando");
 
                 // Leo las muestras de audio
-                recorder.read(buffer,0,BUFFER_SIZE);
+                recorder.read(buffer,0, BUFFER_SIZE_MICRO);
 
                 // Si llego aca es que hay nueva info, seteo el flag para la FFT
                 buffer_ready = true;
@@ -675,7 +695,7 @@ public class MainActivity extends AppCompatActivity {
     private void NotaCompare() {
         // Actualizo Frecuencia
         final TextView indicador = findViewById(R.id.Indicador);
-        boolean flag_afinado =false;
+        //boolean flag_afinado =false;
         boolean flag_abajo =false;
         boolean flag_arriba =false;
 
@@ -747,9 +767,10 @@ public class MainActivity extends AppCompatActivity {
 
         if(flag_afinado){
             flag_afinado=false;
+            f_fundamental=0;
             indicador.setBackgroundColor(getResources().getColor(R.color.color_afinado));
             indicador.setText("Afinado");
-            esperar(2);
+            //esperar(1);
         }
         if(flag_arriba){
             flag_arriba=false;
@@ -771,9 +792,17 @@ public class MainActivity extends AppCompatActivity {
     //Funcion para "dormir" el programa X segundos
     void esperar(int segundos){
         try{
-            Thread.sleep(segundos*1000);
+            Thread.sleep( segundos*1000);
+
         }catch (Exception e){
             System.out.println(e);
         }
     }
+
+    // aca voy a la parte del ukelele
+    public void ukelele(View view){
+        Intent ukelele = new Intent(this,Ukelele_activity.class);
+        startActivity(ukelele);
+    }
+
 }
